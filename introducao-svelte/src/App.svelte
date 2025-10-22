@@ -1,39 +1,116 @@
 <script>
-  
-  import Header from "./lib/Header.svelte";
-  let contador = $state(0);
-  // let dobroContador = $derived(contador * 2)
-  let mensagem = $derived(contador<5?"Menor que 5":"Menor que 10")
-  let color = "pink"
+// @ts-nocheck
 
-  $effect(()=>{
-    if(contador == 10 || contador == -1){
-      contador = 0;
+    import PokemonBanner from "./lib/components/PokemonBanner.svelte";
+import PokemonCard from "./lib/components/PokemonCard.svelte";
+    import PokemonDetailModel from "./lib/components/PokemonDetailModel.svelte";
+
+  let pokemons = $state([]);
+  let isLoading = $state(true);
+  let searchTerm = $state('')
+  let selectedType = $state(null);
+
+  let selectedPokemon = $state(null);
+
+  const openModal = (pokemon) =>{
+    selectedPokemon = pokemon;
+  }
+
+  const closeModal = () =>{
+    selectedPokemon = null;
+  }
+
+  $effect(() => {
+      const fetchPokemons = async() =>{
+      try{
+        const pokemonUrl = "http://pokeapi.co/api/v2/pokemon?limit=151&offset=0"
+        const pokemonResponse = await fetch(pokemonUrl);
+        const data = await pokemonResponse.json();
+
+        const pokemonDetailsPromises = data.results.map((pokemon) =>fetch(pokemon.url).then((res) => res.json()));
+        const detailedPokemons = await Promise.all(pokemonDetailsPromises);
+        pokemons = detailedPokemons;
+      }catch(error){
+        console.error("Falha ao buscar os pokemons: ", error);
+      }finally{ //sempre executa
+        isLoading = false;
+      }
     }
+    fetchPokemons();
   })
 
-  function adicionarContador(){
-    contador++; 
-  }
+  const availableTypes = $derived(
+    [...new Set(pokemons.flatMap(p=>p.types.map(t => t.type.name)))].sort()
+  )
 
-  function subtrairContador(){
-    contador--;
-  }
+  let filteredPokemons = $derived(
+    pokemons.filter(pokemon => pokemon.name.toLowerCase().includes(searchTerm.toLocaleLowerCase())).filter(pokemon =>{
+      if(!selectedType) return true;
+      return pokemon.types.some(t => t.type.name === selectedType);
+    })
+  )
 </script>
 
-<!-- <h1>Introdução ao Svelte by {nome.toLocaleUpperCase()} que possui {idade} anos</h1> -->
-
 <main>
-  <Header/>
-  <h4 style="color:{color}">Contador: {contador}</h4>
-  <!-- <h4>Dobro do contador: {dobroContador}</h4> -->
-   <h4>{mensagem}</h4>
-  <button onclick={adicionarContador}>Adicionar</button>
-  <button onclick={subtrairContador}>Subtrair</button>
+  <PokemonBanner></PokemonBanner>
+  <div class="inputs">
+    <input type="text" placeholder="Pesquisar Pokemon..." bind:value={searchTerm}>
+
+    <select bind:value={selectedType}>
+      <option value={null}>Todos os tipos</option>
+
+      {#each availableTypes as type }
+        <option value={type}>{type}</option>
+      {/each}
+    </select>
+  </div>
+  {#if isLoading}
+    <p>Carregando Pokemons...</p>
+  {:else if filteredPokemons.length === 0}
+    <p>Nenhum pokemon encontrado com esses filtros.</p>
+  {:else}
+    <div class="pokemon-list">
+      {#each filteredPokemons as pokemon (pokemon.id)}
+        <PokemonCard {pokemon} onSelect={() => openModal(pokemon)}/>
+      {/each}
+    </div>
+  {/if}
+
+  {#if selectedPokemon}
+    <PokemonDetailModel onClose={closeModal} pokemon={selectedPokemon}></PokemonDetailModel>
+  {/if}
 </main>
 
 <style>
-  h1{
-    color: black;
-  }
+  .pokemon-list{
+        display: flex;
+        flex-flow: row wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding-bottom: 32px;
+    }
+    
+    .inputs{
+        background: transparent;
+        display: flex;
+        position: sticky;
+        top: 0;
+        gap: 16px;
+        justify-content: center;
+        z-index: 1;
+        flex-flow: row wrap;
+    }
+
+    input, select{
+        border: 2px solid grey;
+        border-radius: 16px;
+        padding:16px;
+        margin-bottom: 16px;
+        margin-top: 16px;
+    }
+
+    input{
+        width: 400px;
+    }
 </style>
